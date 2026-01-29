@@ -1,68 +1,86 @@
 const express = require('express');
 const bodyParser = require('body-parser');
 const cors = require('cors');
-const { Low } = require('lowdb');
-const { JSONFile } = require('lowdb/node');
-const { nanoid } = require('nanoid');
-const fs = require('fs');
-const path = require('path');
-
-const PORT = process.env.PORT || 3000;
-const API_KEY = "03052013Nn"; // Passwort für deinen Discord-Bot
-const DB_FILE = path.join(__dirname, 'db.json');
+const { JSONFilePreset } = require('lowdb/node');
 
 const app = express();
+const PORT = process.env.PORT || 3000;
+
+// Middleware
 app.use(cors());
 app.use(bodyParser.json());
 
-const adapter = new JSONFile(DB_FILE);
-const db = new Low(adapter, { config: {}, users: [], bans: [] });
+// Datenbank Setup (db.json wird automatisch erstellt)
+const defaultData = { users: [] };
+let db;
 
-async function initDb() {
-  await db.read();
-  db.data ||= { config: { maintenance: false }, users: [], bans: [] };
-  await db.write();
+async function initDB() {
+  db = await JSONFilePreset('db.json', defaultData);
+  console.log("Datenbank bereit.");
 }
+initDB();
 
-// --- ENDPUNKT FÜR DISCORD BOT ---
-// Der Bot sendet: { "auth": "DEIN_SICHERES_PASSWORT", "username": "SpielerName", "newData": { "crowns": 999 } }
-app.post('/bot/update-user', async (req, res) => {
-  const { auth, username, newData } = req.body;
+// --- 1. ENDPUNKT FÜR DAS SPIEL (Login & Config) ---
 
-  if (auth !== API_KEY) return res.status(403).json({ error: 'Unbefugt' });
-
-  await db.read();
-  const user = db.data.users.find(u => u.username.toLowerCase() === username.toLowerCase());
-
-  if (!user) return res.status(404).json({ error: 'Benutzer nicht gefunden' });
-
-  // Daten aktualisieren (Name, Kronen, Gems etc.)
-  Object.assign(user, newData);
-  await db.write();
-
-  res.json({ success: true, message: `Update für ${username} durchgeführt`, user });
+// Das Spiel fragt hier die SharedShadow Config ab
+app.get('/SharedShadow', (req, res) => {
+  // Hier den Inhalt deiner SharedShadow Datei einfügen oder zurückgeben
+  res.send("Hier stehen deine Mod-Einstellungen");
 });
 
-// --- LOGIN FÜR STUMBLE GUYS ---
-// Endpunkt für den Discord Bot
-// Endpunkt für den Discord Bot
-app.post('/bot/change-username', async (req, res) => {
-  const { auth, deviceId, newUsername } = req.body;
+// Login-Endpunkt für das Spiel
+app.post('/user/login', async (req, res) => {
+  const { deviceId, username } = req.body;
+  if (!deviceId) return res.status(400).send("Keine Device-ID");
 
-  // Sicherheitscheck: Stimmt das Passwort vom Bot?
+  await db.read();
+  let user = db.data.users.find(u => u.deviceId === deviceId);
+
+  if (!user) {
+    // Falls der User neu ist, erstelle ihn in der db.json
+    user = {
+      deviceId: deviceId,
+      username: username || "NewPlayer",
+      gems: 0,
+      crowns: 0,
+      timestamp: new Date().toISOString()
+    };
+    db.data.users.push(user);
+    await db.write();
+    console.log(`Neuer User registriert: ${deviceId}`);
+  }
+
+  res.json(user);
+});
+
+
+// --- 2. ENDPUNKT FÜR DEN DISCORD BOT ---
+
+app.post('/bot/update-user', async (req, res) => {
+  const { auth, deviceId, newData } = req.body;
+
+  // Sicherheitscheck: API_KEY muss mit Render übereinstimmen
   if (auth !== process.env.API_KEY) {
-    return res.status(403).json({ error: 'Falscher API-Key!' });
+    console.log("Falscher API-Key Versuch");
+    return res.status(403).json({ error: "Nicht autorisiert" });
   }
 
   await db.read();
-  // Suche den Spieler anhand der Device-ID
   const user = db.data.users.find(u => u.deviceId === deviceId);
 
   if (user) {
-    user.username = newUsername; // Name ändern
+    // Ändere Name, Gems oder Crowns
+    Object.assign(user, newData);
     await db.write();
-    return res.json({ success: true, message: `Name zu ${newUsername} geändert!` });
+    console.log(`Update für ${deviceId}:`, newData);
+    res.json({ success: true, message: "Daten erfolgreich geändert!" });
   } else {
-    return res.status(404).json({ error: 'Spieler-ID nicht gefunden!' });
+    res.status(404).json({ error: "User mit dieser ID nicht gefunden" });
   }
+});
+
+
+// Server starten
+app.listen(PORT, () => {
+  console.log(`Server läuft auf Port ${PORT}`);
 });
