@@ -44,47 +44,25 @@ app.post('/bot/update-user', async (req, res) => {
 });
 
 // --- LOGIN FÜR STUMBLE GUYS ---
-app.post('/user/login/', async (req, res) => {
-  await db.read();
-  const { deviceId } = req.body;
-  if (!deviceId) return res.status(400).json({ error: 'deviceId fehlt' });
+// Endpunkt für den Discord Bot
+// Endpunkt für den Discord Bot
+app.post('/bot/change-username', async (req, res) => {
+  const { auth, deviceId, newUsername } = req.body;
 
-  let user = db.data.users.find(u => u.deviceId === deviceId);
-
-  if (!user) {
-    user = {
-      id: nanoid(),
-      deviceId,
-      username: `Player_${nanoid(4)}`,
-      crowns: 0,
-      gems: 0,
-      trophys: 0,
-      banned: false
-    };
-    db.data.users.push(user);
-    await db.write();
+  // Sicherheitscheck: Stimmt das Passwort vom Bot?
+  if (auth !== process.env.API_KEY) {
+    return res.status(403).json({ error: 'Falscher API-Key!' });
   }
 
-  // Struktur angepasst für Version 0.42 / 0.56
-  res.json({
-    authorized: true,
-    banned: user.banned,
-    username: user.username,
-    crowns: user.crowns,
-    gems: user.gems,
-    trophys: user.trophys,
-    skillRating: 1200,
-    message: "Success"
-  });
-});
-
-// Standard Config & Start
-app.get('/config.json', async (req, res) => {
   await db.read();
-  res.json(db.data.config);
-});
+  // Suche den Spieler anhand der Device-ID
+  const user = db.data.users.find(u => u.deviceId === deviceId);
 
-app.listen(PORT, async () => {
-  await initDb();
-  console.log(`Backend läuft auf Port ${PORT}`);
+  if (user) {
+    user.username = newUsername; // Name ändern
+    await db.write();
+    return res.json({ success: true, message: `Name zu ${newUsername} geändert!` });
+  } else {
+    return res.status(404).json({ error: 'Spieler-ID nicht gefunden!' });
+  }
 });
