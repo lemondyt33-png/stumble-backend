@@ -1,33 +1,35 @@
-const { Client, GatewayIntentBits, SlashCommandBuilder, Routes } = require('discord.js');
-const { REST } = require('@discordjs/rest');
+const { Client, GatewayIntentBits, SlashCommandBuilder, Routes, REST } = require('discord.js');
 const axios = require('axios');
 
-const TOKEN = 'MTQ2NjQ5ODI3MzU4OTIwMzE4NQ.GGnzfO.6qXFfvpFI3xYMyhJroXR69Hd1-0U4uDDcr33-E';
-const CLIENT_ID = '1466498273589203185'; // Findest du im Developer Portal unter "General Information"
-const BACKEND_URL = 'https://stumble-backend-5pzk.onrender.com';
-const API_KEY = '03052013Nn'; // Das Passwort von Render
+// Ersetze diese 3 Werte mit deinen aktuellen Daten
+const TOKEN = 'MTQ2NjQ5ODI3MzU4OTIwMzE4NQ.GoifbE.3cEFl5LCMUH2547m9TcsSAxjcU3o4MayA8_L_U'; 
+const CLIENT_ID = '1466498273589203185';
+const GUILD_ID = ''; // Rechtsklick auf Server-Icon -> ID kopieren
+const API_KEY = '03052013Nn';
+const BACKEND_URL = 'https://stumble-backend-5pzk.onrender.com'; // Falls im selben Repo, sonst deine Render-URL
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
-// Befehl registrieren
 const commands = [
   new SlashCommandBuilder()
     .setName('changeusername')
     .setDescription('Ändert deinen Namen im Spiel')
-    .addStringOption(option => option.setName('id').setDescription('Deine Device-ID aus dem Spiel').setRequired(true))
-    .addStringOption(option => option.setName('name').setDescription('Dein neuer Wunschname').setRequired(true)),
-].map(command => command.toJSON());
+    .addStringOption(opt => opt.setName('id').setDescription('Deine Device-ID').setRequired(true))
+    .addStringOption(opt => opt.setName('name').setDescription('Dein neuer Name').setRequired(true)),
+].map(cmd => cmd.toJSON());
 
 const rest = new REST({ version: '10' }).setToken(TOKEN);
 
-(async () => {
+client.once('ready', async () => {
   try {
-    await rest.put(Routes.applicationCommands(CLIENT_ID), { body: commands });
-    console.log('Slash Commands registriert!');
+    console.log(`Eingeloggt als ${client.user.tag}`);
+    // Registrierung speziell für DEINEN Server (geht sofort!)
+    await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), { body: commands });
+    console.log('Slash Commands SOFORT registriert!');
   } catch (error) {
-    console.error(error);
+    console.error('Registrierungsfehler:', error);
   }
-})();
+});
 
 client.on('interactionCreate', async interaction => {
   if (!interaction.isChatInputCommand()) return;
@@ -36,20 +38,20 @@ client.on('interactionCreate', async interaction => {
     const deviceId = interaction.options.getString('id');
     const newName = interaction.options.getString('name');
 
-    await interaction.deferReply(); // Bot braucht Zeit zum Antworten
+    await interaction.deferReply();
 
     try {
-      const response = await axios.post(`${BACKEND_URL}/bot/change-username`, {
+      // WICHTIG: Der Pfad muss mit deiner server.js übereinstimmen (/bot/update-user oder /bot/change-username)
+      const response = await axios.post(`${BACKEND_URL}/bot/update-user`, {
         auth: API_KEY,
         deviceId: deviceId,
-        newUsername: newName
+        newData: { username: newName }
       });
 
-      if (response.data.success) {
-        await interaction.editReply(`✅ Erfolg! Deine ID **${deviceId}** heißt jetzt im Spiel **${newName}**.`);
-      }
+      await interaction.editReply(`✅ Erfolg! ID **${deviceId}** heißt jetzt **${newName}**.`);
     } catch (error) {
-      await interaction.editReply(`❌ Fehler: Entweder ist die ID falsch oder der Server ist offline.`);
+      console.error(error.response?.data || error.message);
+      await interaction.editReply(`❌ Fehler: Server antwortet nicht oder ID falsch.`);
     }
   }
 });
